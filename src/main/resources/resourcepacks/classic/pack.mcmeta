@@ -1,0 +1,7 @@
+{
+	"pack": {
+        	"pack_format": 22,
+			"supported_formats": [18, 22],
+        	"description": [{"text":"A drakense tiers reversion by PabloRelojero"}]
+        }
+}

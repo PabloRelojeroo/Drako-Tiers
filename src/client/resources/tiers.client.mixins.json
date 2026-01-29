@@ -1,12 +1,10 @@
 {
   "required": true,
   "package": "com.tiers.mixin.client",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_17",
   "client": [
-    "AddRenderedPlayersClientMixin",
-    "ModifyNametagsClientMixin",
-    "ModifyTextDisplaysClientMixin",
-    "ModifyTabClientMixin"
+    "ModifyNameTagsClientMixin",
+    "PlayerListEntryMixin"
   ],
   "injectors": {
     "defaultRequire": 1

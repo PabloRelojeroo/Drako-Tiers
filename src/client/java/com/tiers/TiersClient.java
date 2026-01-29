@@ -1,37 +1,28 @@
 package com.tiers;
 
-import com.mojang.blaze3d.platform.GLX;
-import com.mojang.blaze3d.systems.GpuDevice;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.brigadier.context.CommandContext;
-import com.tiers.misc.*;
-import com.tiers.profile.PlayerProfile;
-import com.tiers.profile.Status;
-import com.tiers.screens.ConfigScreen;
+import com.tiers.misc.ColorControl;
+import com.tiers.misc.ColorLoader;
+import com.tiers.misc.Icons;
+import com.tiers.misc.PlayerProfileQueue;
+import com.tiers.profiles.GameMode;
+import com.tiers.profiles.PlayerProfile;
+import com.tiers.profiles.Status;
+import com.tiers.profiles.types.BaseProfile;
 import com.tiers.screens.PlayerSearchResultScreen;
-import com.tiers.textures.ColorLoader;
-import com.tiers.textures.Icons;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.ResourcePackActivationType;
-import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.option.KeyBinding;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.decoration.DisplayEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.resource.ResourcePackManager;
 import net.minecraft.resource.ResourceType;
-import net.minecraft.text.ClickEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
-import net.minecraft.util.Colors;
 import net.minecraft.util.Identifier;
 import org.apache.commons.io.FileUtils;
 import org.lwjgl.glfw.GLFW;
@@ -40,75 +31,228 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class TiersClient implements ClientModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger(TiersClient.class);
-    public static String userAgent = "Tiers (modrinth.com/mod/tiers)";
-    public static final ArrayList<PlayerProfile> playerProfiles = new ArrayList<>();
+    protected static final ArrayList<PlayerProfile> playerProfiles = new ArrayList<>();
+    protected static final HashMap<String, Text> playerTexts = new HashMap<>();
 
     public static boolean toggleMod = true;
-    public static boolean toggleTab = true;
     public static boolean showIcons = true;
     public static boolean isSeparatorAdaptive = true;
-    public static boolean autoKitDetect = false;
     public static ModesTierDisplay displayMode = ModesTierDisplay.ADAPTIVE_HIGHEST;
-    public static Icons.Type activeIcons = Icons.Type.PVPTIERS;
 
-    public static DisplayStatus positionMCTiers = DisplayStatus.OFF;
-    public static Mode activeMCTiersMode = Mode.MCTIERS_VANILLA;
+    public static DisplayStatus mcTiersCOMPosition = DisplayStatus.LEFT;
+    public static Modes activeMCTiersCOMMode = Modes.MCTIERSCOM_VANILLA;
 
-    public static DisplayStatus positionPvPTiers = DisplayStatus.LEFT;
-    public static Mode activePvPTiersMode = Mode.PVPTIERS_CRYSTAL;
+    public static DisplayStatus drakenseTiersPosition = DisplayStatus.RIGHT;
+    public static Modes activeDrakenseTiersMode = Modes.DRAKENSE_VANILLA;
 
-    public static DisplayStatus positionSubtiers = DisplayStatus.RIGHT;
-    public static Mode activeSubtiersMode = Mode.SUBTIERS_MINECART;
-
-    public static KeyBinding autoDetectKey;
-    public static KeyBinding openClosestPlayerProfile;
-    public static KeyBinding cycleRightKey;
-    public static KeyBinding cycleLeftKey;
+    private static KeyBinding cycleRightKey;
+    private static KeyBinding cycleLeftKey;
+    private static KeyBinding openNearestPlayerKey;
 
     @Override
     public void onInitializeClient() {
         ConfigManager.loadConfig();
-        changeIcons(activeIcons, false);
-        clearCache(true);
+        clearCache();
         CommandRegister.registerCommands();
-
-        Optional<ModContainer> modContainer = FabricLoader.getInstance().getModContainer("tiers");
-
-        modContainer.ifPresent(tiers -> {
-            ResourceManagerHelper.registerBuiltinResourcePack(Identifier.of("resourcepacks", "tiers-resources"), tiers, Text.of("Resources for Tiers"), ResourcePackActivationType.ALWAYS_ENABLED);
-            userAgent += " v" + tiers.getMetadata().getVersion().getFriendlyString();
-        });
-
-        KeyBinding.Category category = KeyBinding.Category.create(Identifier.of("tiers"));
-        TiersClient.autoDetectKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Auto Detect Kit", GLFW.GLFW_KEY_Y, category));
-        TiersClient.openClosestPlayerProfile = KeyBindingHelper.registerKeyBinding(new KeyBinding("Open Closest Player Profile", GLFW.GLFW_KEY_H, category));
-        TiersClient.cycleRightKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Cycle Right Gamemodes", GLFW.GLFW_KEY_I, category));
-        TiersClient.cycleLeftKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Cycle Left Gamemodes", GLFW.GLFW_KEY_U, category));
-
-        ResourceLoader.get(ResourceType.CLIENT_RESOURCES).registerReloader(Identifier.of("tiers"), new ColorLoader());
+        FabricLoader.getInstance().getModContainer("drktiers").ifPresent(tiers -> 
+            ResourceManagerHelper.registerBuiltinResourcePack(new Identifier("drktiers", "modern"), tiers, ResourcePackActivationType.ALWAYS_ENABLED));
+        FabricLoader.getInstance().getModContainer("drktiers").ifPresent(tiers -> 
+            ResourceManagerHelper.registerBuiltinResourcePack(new Identifier("drktiers", "classic"), tiers, ResourcePackActivationType.NORMAL));
+        ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new ColorLoader());
+        cycleRightKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Cycle Right Gamemodes", GLFW.GLFW_KEY_I, "DRKTiers"));
+        cycleLeftKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Cycle Left Gamemodes", GLFW.GLFW_KEY_U, "DRKTiers"));
+        openNearestPlayerKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Open Nearest Player Profile", GLFW.GLFW_KEY_O, "DRKTiers"));
         ClientTickEvents.END_CLIENT_TICK.register(TiersClient::checkKeys);
-        ClientTickEvents.END_CLIENT_TICK.register(minecraftClient -> {
-            if (autoKitDetect)
-                InventoryChecker.checkInventory(minecraftClient, false);
-        });
-
-        LOGGER.info("Tiers initialized | User agent: {}", userAgent);
+        LOGGER.info("DRKTiers initialized");
     }
 
-    public static PlayerProfile addGetPlayer(String playerName, boolean priority) {
-        for (PlayerProfile playerProfile : playerProfiles) {
-            if (playerProfile.name.equalsIgnoreCase(playerName) || playerProfile.originalName.equalsIgnoreCase(playerName)) {
-                if (priority)
-                    PlayerProfileQueue.changeToFirstInQueue(playerProfile);
-                return playerProfile;
+    public static Text getFullName(String originalName, Text originalNameText) {
+        PlayerProfile profile = addGetPlayer(originalName, false);
+        if (profile.status == Status.READY) {
+            if (profile.originalNameText == null || profile.originalNameText != originalNameText)
+                updatePlayerNametag(originalNameText, profile);
+        }
+
+        if (playerTexts.containsKey(originalName)) return playerTexts.get(originalName);
+
+        return originalNameText;
+    }
+
+    public static void updateAllTags() {
+        for (PlayerProfile profile : playerProfiles) {
+            if (profile.status == Status.READY && profile.originalNameText != null)
+                updatePlayerNametag(profile.originalNameText, profile);
+        }
+    }
+
+    public static void updatePlayerNametag(Text originalNameText, PlayerProfile profile) {
+        Text rightText = Text.literal("");
+        Text leftText = Text.literal("");
+
+        if (mcTiersCOMPosition == DisplayStatus.RIGHT) {
+            rightText = updateProfileNameTagRight(profile.mcTiersCOMProfile, activeMCTiersCOMMode);
+        } else if (mcTiersCOMPosition == DisplayStatus.LEFT) {
+            leftText = updateProfileNameTagLeft(profile.mcTiersCOMProfile, activeMCTiersCOMMode);
+        }
+        if (drakenseTiersPosition == DisplayStatus.RIGHT) {
+            rightText = updateProfileNameTagRight(profile.drakenseTiersProfile, activeDrakenseTiersMode);
+        } else if (drakenseTiersPosition == DisplayStatus.LEFT) {
+            leftText = updateProfileNameTagLeft(profile.drakenseTiersProfile, activeDrakenseTiersMode);
+        }
+
+        playerTexts.put(profile.name, Text.literal("")
+                .append(leftText)
+                .append(originalNameText)
+                .append(rightText));
+
+        profile.originalNameText = originalNameText;
+    }
+
+    private static Text updateProfileNameTagRight(BaseProfile profile, Modes activeMode) {
+        MutableText returnValue = Text.literal("");
+        if (profile == null || profile.status != Status.READY) return returnValue;
+        
+        GameMode shown = profile.getGameMode(activeMode);
+        if (shown == null || shown.status == Status.SEARCHING) return returnValue;
+        if (shown.status == Status.NOT_EXISTING && displayMode == ModesTierDisplay.SELECTED) return returnValue;
+        
+        if (displayMode == ModesTierDisplay.ADAPTIVE_HIGHEST && shown.status == Status.NOT_EXISTING && profile.highest != null)
+            shown = profile.highest;
+        if (displayMode == ModesTierDisplay.HIGHEST && profile.highest != null && profile.highest.getTierPoints(false) > shown.getTierPoints(false))
+            shown = profile.highest;
+        if (shown == null || shown.status != Status.READY) return returnValue;
+        
+        MutableText separator = Text.literal(" | ").setStyle(isSeparatorAdaptive ? shown.displayedTier.getStyle() : Style.EMPTY.withColor(ColorControl.getColor("static_separator")));
+        returnValue.append(Text.literal("").append(separator).append(shown.displayedTier));
+        if (showIcons)
+            returnValue.append(Text.literal(" ").append(shown.name.getIconTag()));
+        
+        return returnValue;
+    }
+
+    private static Text updateProfileNameTagLeft(BaseProfile profile, Modes activeMode) {
+        MutableText returnValue = Text.literal("");
+        if (profile == null || profile.status != Status.READY) return returnValue;
+        
+        GameMode shown = profile.getGameMode(activeMode);
+        if (shown == null || shown.status == Status.SEARCHING) return returnValue;
+        if (shown.status == Status.NOT_EXISTING && displayMode == ModesTierDisplay.SELECTED) return returnValue;
+        
+        if (displayMode == ModesTierDisplay.ADAPTIVE_HIGHEST && shown.status == Status.NOT_EXISTING && profile.highest != null)
+            shown = profile.highest;
+        if (displayMode == ModesTierDisplay.HIGHEST && profile.highest != null && profile.highest.getTierPoints(false) > shown.getTierPoints(false))
+            shown = profile.highest;
+        if (shown == null || shown.status != Status.READY) return returnValue;
+        
+        MutableText separator = Text.literal(" | ").setStyle(isSeparatorAdaptive ? shown.displayedTier.getStyle() : Style.EMPTY.withColor(ColorControl.getColor("static_separator")));
+        if (showIcons)
+            returnValue = Text.literal("").append(shown.name.getIconTag()).append(" ");
+        returnValue.append(Text.literal("").append(shown.displayedTier).append(separator));
+        
+        return returnValue;
+    }
+
+    public static void restyleAllTexts() {
+        for (PlayerProfile profile : playerProfiles) {
+            if (profile.status == Status.READY) {
+                if (profile.mcTiersCOMProfile != null && profile.mcTiersCOMProfile.status == Status.READY)
+                    profile.mcTiersCOMProfile.parseInfo(profile.mcTiersCOMProfile.originalJson);
+                if (profile.drakenseTiersProfile != null && profile.drakenseTiersProfile.status == Status.READY)
+                    profile.drakenseTiersProfile.parseInfo(profile.drakenseTiersProfile.originalJson);
             }
         }
-        PlayerProfile newProfile = new PlayerProfile(playerName, true);
+    }
+
+    public static void checkKeys(MinecraftClient client) {
+        if (cycleRightKey.wasPressed()) {
+            if (client.player == null) return;
+            if (mcTiersCOMPosition.toString().equalsIgnoreCase("RIGHT")) {
+                client.player.sendMessage(Text.literal("Right (MCTiersCOM) is now displaying ")
+                        .setStyle(Style.EMPTY.withColor(ColorControl.getColor("text"))).append(cycleMCTiersCOMMode()), true);
+                return;
+            }
+            if (drakenseTiersPosition.toString().equalsIgnoreCase("RIGHT")) {
+                client.player.sendMessage(Text.literal("Right (DrakenseTiers) is now displaying ")
+                        .setStyle(Style.EMPTY.withColor(ColorControl.getColor("text"))).append(cycleDrakenseTiersMode()), true);
+                return;
+            }
+            client.player.sendMessage(Text.literal("There's nothing on the right display").setStyle(Style.EMPTY.withColor(ColorControl.getColor("red"))), true);
+        }
+        if (cycleLeftKey.wasPressed()) {
+            if (client.player == null) return;
+            if (mcTiersCOMPosition.toString().equalsIgnoreCase("LEFT")) {
+                client.player.sendMessage(Text.literal("Left (MCTiersCOM) is now displaying ")
+                        .setStyle(Style.EMPTY.withColor(ColorControl.getColor("text"))).append(cycleMCTiersCOMMode()), true);
+                return;
+            }
+            if (drakenseTiersPosition.toString().equalsIgnoreCase("LEFT")) {
+                client.player.sendMessage(Text.literal("Left (DrakenseTiers) is now displaying ")
+                        .setStyle(Style.EMPTY.withColor(ColorControl.getColor("text"))).append(cycleDrakenseTiersMode()), true);
+                return;
+            }
+            client.player.sendMessage(Text.literal("There's nothing on the left display").setStyle(Style.EMPTY.withColor(ColorControl.getColor("red"))), true);
+        }
+        if (openNearestPlayerKey.wasPressed()) {
+            if (client.player == null || client.world == null) return;
+            net.minecraft.entity.player.PlayerEntity nearestPlayer = null;
+            double nearestDistance = Double.MAX_VALUE;
+            for (net.minecraft.entity.player.PlayerEntity player : client.world.getPlayers()) {
+                if (player == client.player) continue;
+                double distance = client.player.squaredDistanceTo(player);
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestPlayer = player;
+                }
+            }
+            if (nearestPlayer != null) {
+                searchPlayer(nearestPlayer.getGameProfile().getName());
+            } else {
+                client.player.sendMessage(Text.literal("No players nearby").setStyle(Style.EMPTY.withColor(ColorControl.getColor("red"))), true);
+            }
+        }
+    }
+
+    public static void sendMessageToPlayer(String chat_message, int color) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player != null)
+            client.player.sendMessage((Text.literal(chat_message).setStyle(Style.EMPTY.withColor(color))), false);
+    }
+
+    protected static int toggleMod(CommandContext<FabricClientCommandSource> ignoredFabricClientCommandSourceCommandContext) {
+        toggleMod = !toggleMod;
+        ConfigManager.saveConfig();
+        sendMessageToPlayer("DRKTiers is now " + (toggleMod ? "enabled" : "disabled"), (toggleMod ? ColorControl.getColor("green") : ColorControl.getColor("red")));
+        return 1;
+    }
+
+    public static void toggleMod() {
+        toggleMod = !toggleMod;
+        ConfigManager.saveConfig();
+    }
+
+    public static PlayerProfile addGetPlayer(String name, boolean priority) {
+        for (PlayerProfile profile : playerProfiles) {
+            if (profile.name.equalsIgnoreCase(name)) {
+                if (priority)
+                    PlayerProfileQueue.changeToFirstInQueue(profile);
+                return profile;
+            }
+        }
+        for (PlayerProfile profile : playerProfiles) {
+            if (profile.name.equalsIgnoreCase(name)) {
+                if (priority)
+                    PlayerProfileQueue.changeToFirstInQueue(profile);
+                return profile;
+            }
+        }
+        PlayerProfile newProfile = new PlayerProfile(name);
 
         if (priority)
             PlayerProfileQueue.putFirstInQueue(newProfile);
@@ -119,270 +263,24 @@ public class TiersClient implements ClientModInitializer {
         return newProfile;
     }
 
-    public static void updateAllTags() {
-        for (PlayerProfile playerProfile : playerProfiles)
-            playerProfile.updateAppendingText();
-
-        if (ConfigScreen.ownProfile != null && ConfigScreen.defaultProfile != null) {
-            ConfigScreen.ownProfile.updateAppendingText();
-            ConfigScreen.defaultProfile.updateAppendingText();
-        }
+    private static void openPlayerSearchResultScreen(PlayerProfile profile) {
+        MinecraftClient.getInstance().setScreen(new PlayerSearchResultScreen(profile));
     }
 
-    public static void restyleAllTexts(ArrayList<PlayerProfile> playerProfiles) {
-        for (PlayerProfile playerProfile : playerProfiles) {
-            if (playerProfile.status == Status.READY) {
-                if (playerProfile.profileMCTiers.status == Status.READY)
-                    playerProfile.profileMCTiers.parseJson(playerProfile.profileMCTiers.originalJson);
-                if (playerProfile.profilePvPTiers.status == Status.READY)
-                    playerProfile.profilePvPTiers.parseJson(playerProfile.profilePvPTiers.originalJson);
-                if (playerProfile.profileSubtiers.status == Status.READY)
-                    playerProfile.profileSubtiers.parseJson(playerProfile.profileSubtiers.originalJson);
-            }
-        }
+    protected static int searchPlayer(String name) {
+        CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS)
+                .execute(() -> MinecraftClient.getInstance().execute(() -> openPlayerSearchResultScreen(addGetPlayer(name, true))));
+        return 1;
     }
 
-    public static String getNearestPlayerName() {
-        MinecraftClient minecraftClient = MinecraftClient.getInstance();
-        PlayerEntity self = minecraftClient.player;
-        if (self == null || self.getEntityWorld() == null)
-            return null;
-
-        PlayerEntity playerEntity = self.getEntityWorld().getPlayers().stream()
-                .filter(player -> player != self)
-                .filter(player -> self.distanceTo(player) < MinecraftClient.getInstance().gameRenderer.getViewDistanceBlocks())
-                .min(Comparator.comparingDouble(self::distanceTo))
-                .orElse(null);
-
-        if (playerEntity != null)
-            return playerEntity.getNameForScoreboard();
-        return null;
-    }
-
-    private static void checkKeys(MinecraftClient minecraftClient) {
-        if (autoDetectKey.wasPressed())
-            InventoryChecker.checkInventory(minecraftClient, true);
-
-        if (openClosestPlayerProfile.wasPressed()) {
-            String nearestPlayerName = getNearestPlayerName();
-            if (nearestPlayerName != null)
-                searchPlayer(nearestPlayerName);
-            else
-                sendMessageToPlayer(Icons.colorText("No players in render distance", "red"), true);
-        }
-
-        if (cycleRightKey.wasPressed()) {
-            Text message = cycleRightMode();
-
-            sendMessageToPlayer(message != null ? message : Icons.colorText("There's nothing on the right display", "red"), true);
-        }
-
-        if (cycleLeftKey.wasPressed()) {
-            Text message = cycleLeftMode();
-
-            sendMessageToPlayer(message != null ? message : Icons.colorText("There's nothing on the left display", "red"), true);
-        }
-    }
-
-    public static Text cycleRightMode() {
-        if (autoKitDetect) {
-            autoKitDetect = false;
-            sendMessageToPlayer(Icons.colorText("Auto kit detect has been disabled due to manual gamemode changes", "red"), false);
-        }
-
-        if (positionMCTiers.toString().equalsIgnoreCase("RIGHT"))
-            return Text.literal("Right (MCTiers) is now displaying ").setStyle(Style.EMPTY.withColor(Colors.WHITE)).append(cycleMCTiersMode());
-
-        if (positionPvPTiers.toString().equalsIgnoreCase("RIGHT"))
-            return Text.literal("Right (PvPTiers) is now displaying ").setStyle(Style.EMPTY.withColor(Colors.WHITE)).append(cyclePvPTiersMode());
-
-        if (positionSubtiers.toString().equalsIgnoreCase("RIGHT"))
-            return Text.literal("Right (Subtiers) is now displaying ").setStyle(Style.EMPTY.withColor(Colors.WHITE)).append(cycleSubtiersMode());
-
-        return null;
-    }
-
-    public static Text cycleLeftMode() {
-        if (autoKitDetect) {
-            autoKitDetect = false;
-            sendMessageToPlayer(Icons.colorText("Auto kit detect has been disabled due to manual gamemode changes", "red"), false);
-        }
-
-        if (positionMCTiers.toString().equalsIgnoreCase("LEFT"))
-            return Text.literal("Left (MCTiers) is now displaying ").setStyle(Style.EMPTY.withColor(Colors.WHITE)).append(cycleMCTiersMode());
-
-        if (positionPvPTiers.toString().equalsIgnoreCase("LEFT"))
-            return Text.literal("Left (PvPTiers) is now displaying ").setStyle(Style.EMPTY.withColor(Colors.WHITE)).append(cyclePvPTiersMode());
-
-        if (positionSubtiers.toString().equalsIgnoreCase("LEFT"))
-            return Text.literal("Left (Subtiers) is now displaying ").setStyle(Style.EMPTY.withColor(Colors.WHITE)).append(cycleSubtiersMode());
-
-        return null;
-    }
-
-    public static Text getRightIcon() {
-        if (positionMCTiers.toString().equalsIgnoreCase("RIGHT"))
-            return activeMCTiersMode.getIcon();
-
-        if (positionPvPTiers.toString().equalsIgnoreCase("RIGHT"))
-            return activePvPTiersMode.getIcon();
-
-        if (positionSubtiers.toString().equalsIgnoreCase("RIGHT"))
-            return activeSubtiersMode.getIcon();
-
-        return Text.empty();
-    }
-
-    public static Text getLeftIcon() {
-        if (positionMCTiers.toString().equalsIgnoreCase("LEFT"))
-            return activeMCTiersMode.getIcon();
-
-        if (positionPvPTiers.toString().equalsIgnoreCase("LEFT"))
-            return activePvPTiersMode.getIcon();
-
-        if (positionSubtiers.toString().equalsIgnoreCase("LEFT"))
-            return activeSubtiersMode.getIcon();
-
-        return Text.empty();
-    }
-
-    public static void sendMessageToPlayer(Text message, boolean overlay) {
-        MinecraftClient minecraftClient = MinecraftClient.getInstance();
-        if (minecraftClient.player != null)
-            minecraftClient.player.sendMessage(message, overlay);
-    }
-
-    public static void toggleMod(CommandContext<FabricClientCommandSource> ignoredFabricClientCommandSourceCommandContext) {
-        toggleMod = !toggleMod;
-        ConfigManager.saveConfig();
-        sendMessageToPlayer(Icons.colorText("Tiers is now " + (toggleMod ? "enabled" : "disabled"), toggleMod ? "green" : "red"), true);
-    }
-
-    public static void toggleMod() {
-        toggleMod = !toggleMod;
-        ConfigManager.saveConfig();
-    }
-
-    public static void toggleTab() {
-        toggleTab = !toggleTab;
-        ConfigManager.saveConfig();
-    }
-
-    public static void toggleAutoKitDetect() {
-        autoKitDetect = !autoKitDetect;
-        ConfigManager.saveConfig();
-    }
-
-    public static void searchPlayer(String playerName) {
-        if (playerName.equalsIgnoreCase("-toggle"))
-            toggleMod(null);
-        else if (playerName.equalsIgnoreCase("-config"))
-            setScreen(ConfigScreen.getConfigScreen(null));
-        else if (playerName.equalsIgnoreCase("-help")) {
-            sendMessageToPlayer(Icons.colorText("--- Tiers help ---", Colors.YELLOW), false);
-            sendMessageToPlayer(Text.literal("- General contact: ").append(Text.literal("flavio6561 on Discord").styled(style -> style.withUnderline(true).withClickEvent(new ClickEvent.OpenUrl(URI.create("https://discordapp.com/users/715189608085716992"))))), false);
-            sendMessageToPlayer(Text.literal("- Report a bug: ").append(Text.literal("Tiers GitHub issues").styled(style -> style.withUnderline(true).withClickEvent(new ClickEvent.OpenUrl(URI.create("https://github.com/Flavio6561/Tiers/issues"))))), false);
-            sendMessageToPlayer(Text.literal("- It's not advisable to create tickets in PvPTiers support"), false);
-            sendMessageToPlayer(Text.literal("- ").append(Text.literal("Changelogs").styled(style -> style.withUnderline(true).withClickEvent(new ClickEvent.OpenUrl(URI.create("https://github.com/Flavio6561/Tiers/wiki/Version-changelogs"))))), false);
-            sendMessageToPlayer(Text.literal("- ").append(Text.literal("Modrinth page").styled(style -> style.withUnderline(true).withClickEvent(new ClickEvent.OpenUrl(URI.create("https://modrinth.com/mod/tiers"))))), false);
-
-            String[] debugInfo = getDebugInfo();
-            sendMessageToPlayer(Icons.colorText("\n" + debugInfo[0], Colors.LIGHT_YELLOW), false);
-            MinecraftClient.getInstance().keyboard.setClipboard(debugInfo[1]);
-            sendMessageToPlayer(Icons.colorText("A complete debug log has been copied to the clipboard", "green"), false);
-        } else if (playerName.equalsIgnoreCase("-clear")) {
-            clearCache(false);
-            sendMessageToPlayer(Icons.colorText("Cleared player cache", "green"), true);
-        } else if (playerName.startsWith("-")) {
-            sendMessageToPlayer(Icons.colorText("Not a valid command. Here's a list of valid commands:", "red"), false);
-            sendMessageToPlayer(Icons.colorText("/tiers -toggle", Colors.YELLOW), false);
-            sendMessageToPlayer(Icons.colorText("/tiers -config", Colors.YELLOW), false);
-            sendMessageToPlayer(Icons.colorText("/tiers -help", Colors.YELLOW), false);
-            sendMessageToPlayer(Icons.colorText("/tiers -clear", Colors.YELLOW), false);
-        } else {
-            PlayerProfile playerProfile = addGetPlayer(playerName, true);
-            if (playerProfile.isPlayerValid())
-                setScreen(new PlayerSearchResultScreen(playerProfile));
-        }
-    }
-
-    public static void setScreen(Screen screen) {
-        MinecraftClient.getInstance().executeAsync(ignored -> MinecraftClient.getInstance().setScreen(screen));
-    }
-
-    public static String[] getDebugInfo() {
-        String[] debugInfo = new String[2];
-
-        final String[] version = new String[1];
-        FabricLoader.getInstance().getModContainer("tiers").ifPresent(tiers -> version[0] = "Tiers version: " + tiers.getMetadata().getVersion().getFriendlyString());
-        debugInfo[0] = version[0] + "\n";
-        debugInfo[1] = debugInfo[0];
-        debugInfo[1] += "Launcher brand: " + MinecraftClient.getLauncherBrand() + "\n";
-        debugInfo[1] += "Game version: " + MinecraftClient.getInstance().getGameVersion() + " | " + FabricLoader.getInstance().getRawGameVersion() + "\n";
-        debugInfo[1] += "Version type: " + MinecraftClient.getInstance().getVersionType() + "\n";
-        debugInfo[1] += "Instance name: " + MinecraftClient.getInstance().getName() + "\n";
-        debugInfo[1] += "Game profile name: " + MinecraftClient.getInstance().getGameProfile().name() + "\n";
-        debugInfo[1] += "OS info:\n\t" + System.getProperty("os.name") + "\n\t" + System.getProperty("os.version") + "\n\t" + System.getProperty("os.arch") + "\n";
-        debugInfo[1] += "CPU info: " + GLX._getCpuInfo() + "\n";
-        Runtime runtime = Runtime.getRuntime();
-        debugInfo[1] += "RAM info (MB):\n\tMax: " + runtime.maxMemory() / (1024 * 1024) + "\n\tTotal: " + runtime.totalMemory() / (1024 * 1024) + "\n\tFree: " + runtime.freeMemory() / (1024 * 1024) + "\n\tIn use: " + (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024) + "\n";
-        GpuDevice gpuDevice = RenderSystem.getDevice();
-        debugInfo[1] += "GPU info:\n\t" + gpuDevice.getBackendName() + "\n\t" + gpuDevice.getImplementationInformation() + "\n\t" + gpuDevice.getRenderer() + "\n\t" + gpuDevice.getVersion() + "\n";
-        debugInfo[1] += "Java version: " + System.getProperty("java.version") + "\n";
-        debugInfo[1] += "Launch args: " + Arrays.toString(FabricLoader.getInstance().getLaunchArguments(false)) + "\n";
-        debugInfo[1] += "All Fabric mods: " + FabricLoader.getInstance().getAllMods() + "\n";
-        debugInfo[1] += "Resource packs: " + ResourcePackManager.listPacks(MinecraftClient.getInstance().getResourcePackManager().getEnabledProfiles()) + "\n";
-
-        return debugInfo;
-    }
-
-    public static void changeIcons(Icons.Type iconType, boolean reload) {
-        Icons.identifierMCTiers = Identifier.of("minecraft", "gamemodes/" + iconType.name().toLowerCase());
-        Icons.identifierPvPTiers = Identifier.of("minecraft", "gamemodes/" + iconType.name().toLowerCase());
-        Icons.identifierMCTiersTags = Identifier.of("minecraft", "gamemodes/" + iconType.name().toLowerCase() + "-tags");
-        Icons.identifierPvPTiersTags = Identifier.of("minecraft", "gamemodes/" + iconType.name().toLowerCase() + "-tags");
-        ColorLoader.identifier = Identifier.of("minecraft", "colors/" + iconType.name().toLowerCase() + ".json");
-
-        if (reload)
-            MinecraftClient.getInstance().reloadResources();
-
-        activeIcons = iconType;
-        ConfigManager.saveConfig();
-    }
-
-    public static void updatePlayerProfile(PlayerProfile playerProfile) {
-        playerProfiles.remove(playerProfile);
-        PlayerProfileQueue.removeFromQueue(playerProfile);
-
-        searchPlayer(playerProfile.nameChanged ? playerProfile.originalName : playerProfile.name);
-    }
-
-    public static void clearCache(boolean start) {
+    public static void clearCache() {
         playerProfiles.clear();
+        playerTexts.clear();
         PlayerProfileQueue.clearQueue();
-
         try {
-            FileUtils.deleteDirectory(new File(FabricLoader.getInstance().getGameDir() + (start ? "/cache/tiers" : "/cache/tiers/players")));
-        } catch (IOException ignored) {
-            LOGGER.warn("Error deleting cache folder");
-        }
-
-        if (toggleMod && MinecraftClient.getInstance().world != null)
-            for (PlayerEntity playerEntity : MinecraftClient.getInstance().world.getPlayers())
-                TiersClient.addGetPlayer(playerEntity.getNameForScoreboard(), false);
-    }
-
-    public static void updateTextDisplayEntities() {
-        MinecraftClient minecraftClient = MinecraftClient.getInstance();
-        if (minecraftClient.world == null)
-            return;
-
-        for (Entity entity : minecraftClient.world.getEntities()) {
-            if (entity instanceof DisplayEntity.TextDisplayEntity textDisplay) {
-                Text text = textDisplay.getText();
-                textDisplay.setText(Text.literal(" ").append(text));
-                textDisplay.setText(text);
-            }
+            FileUtils.deleteDirectory(new File(FabricLoader.getInstance().getConfigDir() + "/drktiers-cache"));
+        } catch (IOException e) {
+            LOGGER.warn("Error deleting cache folder: {}", e.getMessage());
         }
     }
 
@@ -398,25 +296,30 @@ public class TiersClient implements ClientModInitializer {
         ConfigManager.saveConfig();
     }
 
-    public static Text cycleMCTiersMode() {
-        activeMCTiersMode = cycleEnum(activeMCTiersMode, Mode.getMCTiersValues());
+    public static Text cycleMCTiersCOMMode() {
+        activeMCTiersCOMMode = cycleEnum(activeMCTiersCOMMode, Modes.getMCTiersCOMValues());
         updateAllTags();
         ConfigManager.saveConfig();
-        return activeMCTiersMode.getTextLabel();
+        return activeMCTiersCOMMode.label;
     }
 
-    public static Text cyclePvPTiersMode() {
-        activePvPTiersMode = cycleEnum(activePvPTiersMode, Mode.getPvPTiersValues());
+    public static Text cycleDrakenseTiersMode() {
+        activeDrakenseTiersMode = cycleEnum(activeDrakenseTiersMode, Modes.getDrakenseTiersValues());
         updateAllTags();
         ConfigManager.saveConfig();
-        return activePvPTiersMode.getTextLabel();
+        return activeDrakenseTiersMode.label;
     }
 
-    public static Text cycleSubtiersMode() {
-        activeSubtiersMode = cycleEnum(activeSubtiersMode, Mode.getSubtiersValues());
+    public static void cycleMCTiersCOMPosition() {
+        mcTiersCOMPosition = cycleEnum(mcTiersCOMPosition, DisplayStatus.values());
         updateAllTags();
         ConfigManager.saveConfig();
-        return activeSubtiersMode.getTextLabel();
+    }
+
+    public static void cycleDrakenseTiersPosition() {
+        drakenseTiersPosition = cycleEnum(drakenseTiersPosition, DisplayStatus.values());
+        updateAllTags();
+        ConfigManager.saveConfig();
     }
 
     public static void cycleDisplayMode() {
@@ -426,7 +329,87 @@ public class TiersClient implements ClientModInitializer {
     }
 
     private static <T extends Enum<T>> T cycleEnum(T current, T[] values) {
-        return values[(current.ordinal() + 1) % values.length];
+        int currentIndex = -1;
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] == current) {
+                currentIndex = i;
+                break;
+            }
+        }
+        if (currentIndex == -1) return values[0];
+        return values[(currentIndex + 1) % values.length];
+    }
+
+    public enum Modes {
+        MCTIERSCOM_VANILLA(Icons.MCTIERSCOM_VANILLA, Icons.MCTIERSCOM_VANILLA_TAG, "mctierscom_vanilla", "Vanilla"),
+        MCTIERSCOM_UHC(Icons.MCTIERSCOM_UHC, Icons.MCTIERSCOM_UHC_TAG, "mctierscom_uhc", "UHC"),
+        MCTIERSCOM_POT(Icons.MCTIERSCOM_POT, Icons.MCTIERSCOM_POT_TAG, "mctierscom_pot", "Pot"),
+        MCTIERSCOM_NETHPOT(Icons.MCTIERSCOM_NETHPOT, Icons.MCTIERSCOM_NETHPOT_TAG, "mctierscom_nethpot", "NethPot"),
+        MCTIERSCOM_SMP(Icons.MCTIERSCOM_SMP, Icons.MCTIERSCOM_SMP_TAG, "mctierscom_smp", "Smp"),
+        MCTIERSCOM_SWORD(Icons.MCTIERSCOM_SWORD, Icons.MCTIERSCOM_SWORD_TAG, "mctierscom_sword", "Sword"),
+        MCTIERSCOM_AXE(Icons.MCTIERSCOM_AXE, Icons.MCTIERSCOM_AXE_TAG, "mctierscom_axe", "Axe"),
+        MCTIERSCOM_MACE(Icons.MCTIERSCOM_MACE, Icons.MCTIERSCOM_MACE_TAG, "mctierscom_mace", "Mace"),
+
+        DRAKENSE_VANILLA(Icons.DRAKENSE_VANILLA, Icons.DRAKENSE_VANILLA_TAG, "drakense_vanilla", "Vanilla"),
+        DRAKENSE_UHC(Icons.DRAKENSE_UHC, Icons.DRAKENSE_UHC_TAG, "drakense_uhc", "UHC"),
+        DRAKENSE_POT(Icons.DRAKENSE_POT, Icons.DRAKENSE_POT_TAG, "drakense_pot", "Pot"),
+        DRAKENSE_NETHPOT(Icons.DRAKENSE_NETHPOT, Icons.DRAKENSE_NETHPOT_TAG, "drakense_nethpot", "NethPot"),
+        DRAKENSE_SMP(Icons.DRAKENSE_SMP, Icons.DRAKENSE_SMP_TAG, "drakense_smp", "Smp"),
+        DRAKENSE_SWORD(Icons.DRAKENSE_SWORD, Icons.DRAKENSE_SWORD_TAG, "drakense_sword", "Sword"),
+        DRAKENSE_AXE(Icons.DRAKENSE_AXE, Icons.DRAKENSE_AXE_TAG, "drakense_axe", "Axe"),
+        DRAKENSE_CRYSTAL(Icons.DRAKENSE_CRYSTAL, Icons.DRAKENSE_CRYSTAL_TAG, "drakense_crystal", "Crystal"),
+        DRAKENSE_MACE(Icons.DRAKENSE_MACE, Icons.DRAKENSE_MACE_TAG, "drakense_mace", "Mace PvP");
+
+        private final Text icon;
+        private final Text iconTag;
+        private final String color;
+        private final String stringLabel;
+        public Text label;
+
+        Modes(Text icon, Text iconTag, String color, String label) {
+            this.icon = icon;
+            this.iconTag = iconTag;
+            this.color = color;
+            this.stringLabel = label;
+            this.label = Text.literal(label).setStyle(Style.EMPTY.withColor(ColorControl.getColor(color)));
+        }
+
+        public static void updateColors() {
+            for (Modes mode : values())
+                mode.label = Text.literal(mode.stringLabel).setStyle(Style.EMPTY.withColor(ColorControl.getColor(mode.color)));
+        }
+
+        public Text getIcon() {
+            return icon;
+        }
+
+        public Text getIconTag() {
+            return iconTag;
+        }
+
+        public Text getLabel() {
+            return label;
+        }
+
+        public static Modes[] getMCTiersCOMValues() {
+            Modes[] modesArray = new Modes[7];
+            ArrayList<Modes> modes = new ArrayList<>();
+            for (Modes mode : Modes.values()) {
+                if (mode.toString().contains("MCTIERSCOM"))
+                    modes.add(mode);
+            }
+            return modes.toArray(modesArray);
+        }
+
+        public static Modes[] getDrakenseTiersValues() {
+            Modes[] modesArray = new Modes[9];
+            ArrayList<Modes> modes = new ArrayList<>();
+            for (Modes mode : Modes.values()) {
+                if (mode.toString().contains("DRAKENSE"))
+                    modes.add(mode);
+            }
+            return modes.toArray(modesArray);
+        }
     }
 
     public enum ModesTierDisplay {
@@ -434,18 +417,26 @@ public class TiersClient implements ClientModInitializer {
         SELECTED,
         ADAPTIVE_HIGHEST;
 
-        public String getCurrentMode() {
-            if (toString().equalsIgnoreCase("HIGHEST"))
-                return "Displayed Tiers: Highest";
-            else if (toString().equalsIgnoreCase("SELECTED"))
-                return "Displayed Tiers: Selected";
-            return "Displayed Tiers: Adaptive Highest";
+        public String getIcon() {
+            if (this.toString().equalsIgnoreCase("HIGHEST"))
+                return "↑";
+            else if (this.toString().equalsIgnoreCase("SELECTED"))
+                return "●";
+            return "↓";
         }
     }
 
     public enum DisplayStatus {
         RIGHT,
         LEFT,
-        OFF
+        OFF;
+
+        public String getIcon() {
+            if (this.toString().equalsIgnoreCase("RIGHT"))
+                return "→";
+            else if (this.toString().equalsIgnoreCase("LEFT"))
+                return "←";
+            return "●";
+        }
     }
 }

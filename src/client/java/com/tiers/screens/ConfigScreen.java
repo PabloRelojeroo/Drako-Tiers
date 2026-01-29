@@ -1,454 +1,218 @@
 package com.tiers.screens;
 
-import com.tiers.PlayerProfileQueue;
 import com.tiers.TiersClient;
-import com.tiers.misc.ConfigManager;
-import com.tiers.profile.PlayerProfile;
-import com.tiers.profile.Status;
-import com.tiers.profile.types.MCTiersProfile;
-import com.tiers.profile.types.PvPTiersProfile;
-import com.tiers.profile.types.SubtiersProfile;
-import com.tiers.textures.ColorControl;
-import com.tiers.textures.Icons;
-import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.RenderPipelines;
+import com.tiers.misc.ColorControl;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Style;
-import net.minecraft.text.StyleSpriteSource;
 import net.minecraft.text.Text;
-import net.minecraft.util.Colors;
 import net.minecraft.util.Identifier;
-import org.lwjgl.glfw.GLFW;
-
-import java.io.FileInputStream;
-import java.io.IOException;
-
-import static com.tiers.TiersClient.LOGGER;
 
 public class ConfigScreen extends Screen {
-    public static PlayerProfile ownProfile;
-    public static PlayerProfile defaultProfile;
 
-    private boolean useOwnProfile;
-    private String autoDetectKitBoundKey;
-    private String cycleRightBoundKey;
-    private String cycleLeftBoundKey;
-    private final Identifier playerAvatarTexture = Identifier.of("");
-    private boolean imageReady;
+    private final Identifier MCTIERS_COM_IMAGE =
+            new Identifier("minecraft", "textures/mctiers_com_logo.png");
+    private final Identifier DRAKENSE_TIERS_IMAGE =
+            new Identifier("minecraft", "textures/drakense_tiers_logo.png");
 
-    private ButtonWidget toggleMod;
+    private ButtonWidget toggleModWidget;
     private ButtonWidget toggleShowIcons;
     private ButtonWidget toggleSeparatorMode;
     private ButtonWidget cycleDisplayMode;
+    private ButtonWidget mcTiersCOMPosition;
+    private ButtonWidget drakenseTiersPosition;
     private ButtonWidget clearPlayerCache;
-    private ButtonWidget autoKitDetect;
-    private ButtonWidget leftMCTiers;
-    private ButtonWidget centerMCTiers;
-    private ButtonWidget rightMCTiers;
-    private ButtonWidget leftPvPTiers;
-    private ButtonWidget centerPvPTiers;
-    private ButtonWidget rightPvPTiers;
-    private ButtonWidget leftSubtiers;
-    private ButtonWidget centerSubtiers;
-    private ButtonWidget rightSubtiers;
-    private ButtonWidget activeRightMode;
-    private ButtonWidget activeLeftMode;
-    private ButtonWidget enableOwnProfile;
 
     private int centerX;
+    private int listY;
+    private int separator;
+    private int firstListX;
+    private int secondListX;
     private int distance;
 
-    private ConfigScreen() {
-        super(Text.of("Tiers config"));
+    private static int updateButtons;
 
-        autoDetectKitBoundKey = String.valueOf(TiersClient.autoDetectKey.getBoundKeyLocalizedText()).replace("literal{", "\"").replace("}", "\"");
-        if (autoDetectKitBoundKey.length() != 3)
-            autoDetectKitBoundKey = "the assigned keybind";
-
-        cycleRightBoundKey = String.valueOf(TiersClient.cycleRightKey.getBoundKeyLocalizedText()).replace("literal{", "\"").replace("}", "\"");
-        if (cycleRightBoundKey.length() != 3)
-            cycleRightBoundKey = "the assigned keybind";
-
-        cycleLeftBoundKey = String.valueOf(TiersClient.cycleLeftKey.getBoundKeyLocalizedText()).replace("literal{", "\"").replace("}", "\"");
-        if (cycleLeftBoundKey.length() != 3)
-            cycleLeftBoundKey = "the assigned keybind";
-
-        loadPlayerAvatar();
-    }
-
-    @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        centerX = width / 2;
-        distance = height / 14;
-
-        super.render(context, mouseX, mouseY, delta);
-
-        context.drawCenteredTextWithShadow(textRenderer, Text.of("Tiers config"), centerX, height / 50, Colors.WHITE);
-
-        drawIconShowcase(context);
-
-        if (!useOwnProfile)
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, playerAvatarTexture, centerX - height / 10 / 2, height - (int) (height / 4.166) - height / 54, 0, 0, height / 10, (int) (height / 4.166), height / 10, (int) (height / 4.166));
-        else
-            drawPlayerAvatar(context, centerX, height - (int) (height / 4.166) - height / 54);
-
-        context.drawCenteredTextWithShadow(textRenderer, useOwnProfile ? ownProfile.getFullName() : defaultProfile.getFullName(), centerX, height - (int) (height / 4.166) - height / 54 - 12, Colors.WHITE);
-
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, MCTiersProfile.MCTIERS_IMAGE, centerX - 120 - 64, distance + 110 + 4, 0, 0, 128, 24, 128, 24);
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, PvPTiersProfile.PVPTIERS_IMAGE, centerX - 12, distance + 110 + 4, 0, 0, 24, 24, 24, 24);
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, SubtiersProfile.SUBTIERS_IMAGE, centerX + 120 - 15, distance + 110, 0, 0, 30, 30, 30, 30);
-
-        context.drawTextWithShadow(textRenderer, TiersClient.getRightIcon(), centerX + 90 + 32, distance + 75 + 8, Colors.WHITE);
-        context.drawTextWithShadow(textRenderer, TiersClient.getLeftIcon(), centerX - 90 - 32 - 12, distance + 75 + 8, Colors.WHITE);
-
-        checkUpdates();
-    }
-
-    private void drawIconShowcase(DrawContext context) {
-        for (int i = 0; i < 8; i++) {
-            context.drawCenteredTextWithShadow(textRenderer, Text.literal(String.valueOf((char) (0xF000 + i))).setStyle(Style.EMPTY.withFont(new StyleSpriteSource.Font(Identifier.of("minecraft", "gamemodes/classic-medium")))), 34 + 14 * i, 13, Colors.WHITE);
-            context.drawCenteredTextWithShadow(textRenderer, Text.literal(String.valueOf((char) (0xF000 + i))).setStyle(Style.EMPTY.withFont(new StyleSpriteSource.Font(Identifier.of("minecraft", "gamemodes/pvptiers-medium")))), 34 + 14 * i, 38, Colors.WHITE);
-            context.drawCenteredTextWithShadow(textRenderer, Text.literal(String.valueOf((char) (0xF000 + i))).setStyle(Style.EMPTY.withFont(new StyleSpriteSource.Font(Identifier.of("minecraft", "gamemodes/mctiers-medium")))), 34 + 14 * i, 63, Colors.WHITE);
-        }
-    }
-
-    private void checkUpdates() {
-        toggleMod.setPosition(width / 2 - 88 - 2, distance);
-        toggleShowIcons.setPosition(width / 2 + 2, distance);
-        toggleSeparatorMode.setPosition(width / 2 - 90, distance + 25);
-        cycleDisplayMode.setPosition(width / 2 - 90, distance + 50);
-        autoKitDetect.setPosition(width / 2 - 90, distance + 75);
-        clearPlayerCache.setPosition(width - 88 - 5, height - 20 - 5);
-        leftMCTiers.setPosition(centerX - 120 - 10 - 24, distance + 145);
-        centerMCTiers.setPosition(centerX - 120 - 10, distance + 145);
-        rightMCTiers.setPosition(centerX - 120 - 10 + 24, distance + 145);
-        leftPvPTiers.setPosition(centerX - 10 - 24, distance + 145);
-        centerPvPTiers.setPosition(centerX - 10, distance + 145);
-        rightPvPTiers.setPosition(centerX - 10 + 24, distance + 145);
-        leftSubtiers.setPosition(centerX + 120 - 10 - 24, distance + 145);
-        centerSubtiers.setPosition(centerX + 120 - 10, distance + 145);
-        rightSubtiers.setPosition(centerX + 120 - 10 + 24, distance + 145);
-        activeRightMode.setPosition(centerX + 90 + 4, distance + 75);
-        activeLeftMode.setPosition(centerX - 90 - 20 - 4, distance + 75);
-        enableOwnProfile.setPosition(width - 20 - 5 - 88 - 4, height - 20 - 5);
-
-        activeRightMode.visible = TiersClient.positionMCTiers == TiersClient.DisplayStatus.RIGHT || TiersClient.positionPvPTiers == TiersClient.DisplayStatus.RIGHT || TiersClient.positionSubtiers == TiersClient.DisplayStatus.RIGHT;
-        activeLeftMode.visible = TiersClient.positionMCTiers == TiersClient.DisplayStatus.LEFT || TiersClient.positionPvPTiers == TiersClient.DisplayStatus.LEFT || TiersClient.positionSubtiers == TiersClient.DisplayStatus.LEFT;
+    public ConfigScreen() {
+        super(Text.literal("DRKTiers Config"));
     }
 
     @Override
     protected void init() {
-        toggleMod = ButtonWidget.builder(Text.of(TiersClient.toggleMod ? "Disable Tiers" : "Enable Tiers"), (buttonWidget) -> {
-            if (TiersClient.toggleMod && InputUtil.isKeyPressed(MinecraftClient.getInstance().getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT))
-                TiersClient.toggleTab();
-            else
-                TiersClient.toggleMod();
-            buttonWidget.setMessage(Text.of(TiersClient.toggleMod ? "Disable Tiers" : "Enable Tiers"));
-            buttonWidget.setTooltip(Tooltip.of(Text.of((TiersClient.toggleMod ? "Disable Tiers on nametags" : "Enable Tiers on nametags") + (TiersClient.toggleMod ? (TiersClient.toggleTab ? "\n\nShift click to disable Tiers on tablist" : "\n\nShift click to enable Tiers on tablist") : ""))));
-        }).dimensions(width / 2 - 88 - 2, distance, 88, 20).tooltip(Tooltip.of(Text.of((TiersClient.toggleMod ? "Disable Tiers on nametags" : "Enable Tiers on nametags") + (TiersClient.toggleMod ? (TiersClient.toggleTab ? "\n\nShift click to disable Tiers on tablist" : "\n\nShift click to enable Tiers on tablist") : "")))).build();
+        centerX = width / 2;
+        listY = (int) (height / 2.8);
+        separator = height / 23;
+        firstListX = (int) (centerX - width / 6);
+        secondListX = (int) (centerX + width / 6);
+        distance = (int) (height / 7.5);
 
-        toggleShowIcons = ButtonWidget.builder(Text.of(TiersClient.showIcons ? "Disable Icons" : "Enable Icons"), (buttonWidget) -> {
-            TiersClient.toggleShowIcons();
-            buttonWidget.setMessage(Text.of(TiersClient.showIcons ? "Disable Icons" : "Enable Icons"));
-            buttonWidget.setTooltip(Tooltip.of(Text.of(TiersClient.showIcons ? "Disable the gamemode icon next to the tier" : "Enable the gamemode icon next to the tier")));
-        }).dimensions(width / 2 + 2, distance, 88, 20).tooltip(Tooltip.of(Text.of(TiersClient.showIcons ? "Disable the gamemode icon next to the tier" : "Enable the gamemode icon next to the tier"))).build();
+        toggleModWidget = ButtonWidget.builder(
+                Text.literal(TiersClient.toggleMod ? "✔" : " ")
+                        .setStyle(Style.EMPTY.withColor(ColorControl.getColor("green"))),
+                button -> {
+                    TiersClient.toggleMod();
+                    button.setMessage(Text.literal(TiersClient.toggleMod ? "✔" : " ")
+                            .setStyle(Style.EMPTY.withColor(ColorControl.getColor("green"))));
+                }
+        ).dimensions(width / 2 - 51, distance - 4, 16, 16).build();
+        toggleModWidget.setTooltip(Tooltip.of(Text.of("✔ - Mod is enabled")));
 
-        toggleSeparatorMode = ButtonWidget.builder(Text.of(TiersClient.isSeparatorAdaptive ? "Disable Dynamic Separator" : "Enable Dynamic Separator"), (buttonWidget) -> {
-            TiersClient.toggleSeparatorAdaptive();
-            buttonWidget.setMessage(Text.of(TiersClient.isSeparatorAdaptive ? "Disable Dynamic Separator" : "Enable Dynamic Separator"));
-            buttonWidget.setTooltip(Tooltip.of(Text.of(TiersClient.isSeparatorAdaptive ? "Make the Tiers separator gray" : "Make the Tiers separator match the tier color")));
-        }).dimensions(width / 2 - 90, distance + 25, 180, 20).tooltip(Tooltip.of(Text.of(TiersClient.isSeparatorAdaptive ? "Make the Tiers separator gray" : "Make the Tiers separator match the tier color"))).build();
+        toggleShowIcons = ButtonWidget.builder(
+                Text.literal(TiersClient.showIcons ? "✔" : " ")
+                        .setStyle(Style.EMPTY.withColor(ColorControl.getColor("green"))),
+                button -> {
+                    TiersClient.toggleShowIcons();
+                    button.setMessage(Text.literal(TiersClient.showIcons ? "✔" : " ")
+                            .setStyle(Style.EMPTY.withColor(ColorControl.getColor("green"))));
+                }
+        ).dimensions(width / 2 - 40, distance + separator - 4, 16, 16).build();
+        toggleShowIcons.setTooltip(Tooltip.of(Text.of("✔ - Icons will be showed next to tier")));
 
-        cycleDisplayMode = ButtonWidget.builder(Text.of(TiersClient.displayMode.getCurrentMode()), (buttonWidget) -> {
-            TiersClient.cycleDisplayMode();
-            buttonWidget.setMessage(Text.of(TiersClient.displayMode.getCurrentMode()));
-        }).dimensions(width / 2 - 90, distance + 50, 180, 20).tooltip(Tooltip.of(Text.of(("""
-                Selected: only the selected tier will be displayed
-                
-                Highest: only the highest tier will be displayed
-                
-                Adaptive Highest: the highest tier will be displayed if selected does not exist""")))).build();
+        toggleSeparatorMode = ButtonWidget.builder(
+                Text.literal(TiersClient.isSeparatorAdaptive ? "✔" : " ")
+                        .setStyle(Style.EMPTY.withColor(ColorControl.getColor("green"))),
+                button -> {
+                    TiersClient.toggleSeparatorAdaptive();
+                    button.setMessage(Text.literal(TiersClient.isSeparatorAdaptive ? "✔" : " ")
+                            .setStyle(Style.EMPTY.withColor(ColorControl.getColor("green"))));
+                }
+        ).dimensions(width / 2 - 69, distance + 2 * separator - 4, 16, 16).build();
+        toggleSeparatorMode.setTooltip(
+                Tooltip.of(Text.of("✔ - The separator will be the same color as the tier instead of gray"))
+        );
 
-        autoKitDetect = ButtonWidget.builder(Text.of(TiersClient.autoKitDetect ? "Disable auto kit detect" : "Enable auto kit detect"), (buttonWidget) -> {
-            TiersClient.toggleAutoKitDetect();
-            buttonWidget.setMessage(Text.of(TiersClient.autoKitDetect ? "Disable auto kit detect" : "Enable auto kit detect"));
-            buttonWidget.setTooltip(Tooltip.of(Text.of((TiersClient.autoKitDetect ?
-                    "Disable auto kit detect: you will need to press " + autoDetectKitBoundKey + " to auto-detect the current gamemode" :
-                    "Enable auto kit detect: Tiers will always scan your inventory to display the right gamemode (instead of pressing " + autoDetectKitBoundKey + ")"))));
-        }).dimensions(width / 2 - 90, distance + 75, 180, 20).tooltip(Tooltip.of(Text.of((TiersClient.autoKitDetect ?
-                "Disable auto kit detect: you will need to press " + autoDetectKitBoundKey + " to auto-detect the current gamemode" :
-                "Enable auto kit detect: Tiers will always scan your inventory to display the right gamemode (instead of pressing " + autoDetectKitBoundKey + ")")))).build();
+        cycleDisplayMode = ButtonWidget.builder(
+                Text.of(TiersClient.displayMode.getIcon()),
+                button -> {
+                    TiersClient.cycleDisplayMode();
+                    button.setMessage(Text.of(TiersClient.displayMode.getIcon()));
+                }
+        ).dimensions(width / 2 - 46, distance + 3 * separator - 4, 16, 16).build();
+        cycleDisplayMode.setTooltip(Tooltip.of(Text.of(
+                "● - Selected tier: only the selected tier will be displayed\n" +
+                "↑ - Highest: only the highest tier will be displayed\n" +
+                "↓ - Adaptive Highest: the highest tier will be displayed if selected does not exist"
+        )));
 
-        if (ownProfile.status == Status.READY) {
-            enableOwnProfile = ButtonWidget.builder(Icons.CYCLE, (buttonWidget) -> {
-                useOwnProfile = !useOwnProfile;
+        mcTiersCOMPosition = ButtonWidget.builder(
+                Text.of(TiersClient.mcTiersCOMPosition.getIcon()),
+                button -> {
+                    TiersClient.cycleMCTiersCOMPosition();
+                    updateButtons = 0;
+                    button.setMessage(Text.of(TiersClient.mcTiersCOMPosition.getIcon()));
+                }
+        ).dimensions(firstListX - 28, listY + 2 * separator - 4, 16, 16).build();
 
-                imageReady = false;
-                loadPlayerAvatar();
+        drakenseTiersPosition = ButtonWidget.builder(
+                Text.of(TiersClient.drakenseTiersPosition.getIcon()),
+                button -> {
+                    TiersClient.cycleDrakenseTiersPosition();
+                    updateButtons = 1;
+                    button.setMessage(Text.of(TiersClient.drakenseTiersPosition.getIcon()));
+                }
+        ).dimensions(secondListX - 28, listY + 2 * separator - 4, 16, 16).build();
 
-                buttonWidget.setTooltip(Tooltip.of(Text.of(useOwnProfile ? "Preview the default profile (" + defaultProfile.name + ")" : "Preview your player profile (" + ownProfile.name + ")")));
-            }).dimensions(width - 20 - 5 - 88 - 4, height - 20 - 5, 20, 20).tooltip(Tooltip.of(Text.of(useOwnProfile ? "Preview the default profile (" + defaultProfile.name + ")" : "Preview your player profile (" + ownProfile.name + ")"))).build();
-        } else {
-            enableOwnProfile = ButtonWidget.builder(Text.of("⚠"), (buttonWidget) -> {
-                ConfigScreen.ownProfile = new PlayerProfile(MinecraftClient.getInstance().getGameProfile().name(), false);
-                PlayerProfileQueue.putFirstInQueue(ConfigScreen.ownProfile);
+        mcTiersCOMPosition.setTooltip(Tooltip.of(Text.of(
+                "→ - The tier will be displayed on the right of the nametag\n" +
+                "← - The tier will be displayed on the left of the nametag\n" +
+                "● - Off"
+        )));
+        drakenseTiersPosition.setTooltip(Tooltip.of(Text.of(
+                "→ - The tier will be displayed on the right of the nametag\n" +
+                "← - The tier will be displayed on the left of the nametag\n" +
+                "● - Off"
+        )));
 
-                close();
-            }).dimensions(width - 20 - 5 - 88 - 4, height - 20 - 5, 20, 20).tooltip(Tooltip.of(Text.of("Can't switch profiles: " + ownProfile.name + " is not found or fetched yet. Click to close screen and retry"))).build();
-        }
+        clearPlayerCache = ButtonWidget.builder(
+                Text.of("\uD83D\uDDD1"),
+                button -> TiersClient.clearCache()
+        ).dimensions(width - 20, height - 20, 16, 16).build();
+        clearPlayerCache.setTooltip(Tooltip.of(Text.of("Clear player cache")));
 
-        clearPlayerCache = ButtonWidget.builder(Text.of("Clear cache"), (buttonWidget) -> TiersClient.clearCache(false)).dimensions(width - 88 - 5, height - 20 - 5, 88, 20).tooltip(Tooltip.of(Text.of("Clear all player cache"))).build();
-
-        leftMCTiers = ButtonWidget.builder(Text.of("←"), (buttonWidget) -> {
-            TiersClient.positionMCTiers = TiersClient.DisplayStatus.LEFT;
-            if (TiersClient.positionPvPTiers == TiersClient.DisplayStatus.LEFT) {
-                TiersClient.positionPvPTiers = TiersClient.DisplayStatus.OFF;
-                leftPvPTiers.active = true;
-                centerPvPTiers.active = false;
-            }
-            if (TiersClient.positionSubtiers == TiersClient.DisplayStatus.LEFT) {
-                TiersClient.positionSubtiers = TiersClient.DisplayStatus.OFF;
-                leftSubtiers.active = true;
-                centerSubtiers.active = false;
-            }
-            buttonWidget.active = false;
-            centerMCTiers.active = true;
-            rightMCTiers.active = true;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX - 120 - 10 - 24, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Display MCTiers on the left"))).build();
-
-        centerMCTiers = ButtonWidget.builder(Text.of("●"), (buttonWidget) -> {
-            TiersClient.positionMCTiers = TiersClient.DisplayStatus.OFF;
-            leftMCTiers.active = true;
-            buttonWidget.active = false;
-            rightMCTiers.active = true;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX - 120 - 10, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Disable MCTiers"))).build();
-
-        rightMCTiers = ButtonWidget.builder(Text.of("→"), (buttonWidget) -> {
-            TiersClient.positionMCTiers = TiersClient.DisplayStatus.RIGHT;
-            if (TiersClient.positionPvPTiers == TiersClient.DisplayStatus.RIGHT) {
-                TiersClient.positionPvPTiers = TiersClient.DisplayStatus.OFF;
-                centerPvPTiers.active = false;
-                rightPvPTiers.active = true;
-            }
-            if (TiersClient.positionSubtiers == TiersClient.DisplayStatus.RIGHT) {
-                TiersClient.positionSubtiers = TiersClient.DisplayStatus.OFF;
-                centerSubtiers.active = false;
-                rightSubtiers.active = true;
-            }
-            leftMCTiers.active = true;
-            centerMCTiers.active = true;
-            buttonWidget.active = false;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX - 120 - 10 + 24, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Display MCTiers on the right"))).build();
-
-        leftPvPTiers = ButtonWidget.builder(Text.of("←"), (buttonWidget) -> {
-            TiersClient.positionPvPTiers = TiersClient.DisplayStatus.LEFT;
-            if (TiersClient.positionMCTiers == TiersClient.DisplayStatus.LEFT) {
-                TiersClient.positionMCTiers = TiersClient.DisplayStatus.OFF;
-                leftMCTiers.active = true;
-                centerMCTiers.active = false;
-            }
-            if (TiersClient.positionSubtiers == TiersClient.DisplayStatus.LEFT) {
-                TiersClient.positionSubtiers = TiersClient.DisplayStatus.OFF;
-                leftSubtiers.active = true;
-                centerSubtiers.active = false;
-            }
-            buttonWidget.active = false;
-            centerPvPTiers.active = true;
-            rightPvPTiers.active = true;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX - 10 - 24, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Display PvPTiers on the left"))).build();
-
-        centerPvPTiers = ButtonWidget.builder(Text.of("●"), (buttonWidget) -> {
-            TiersClient.positionPvPTiers = TiersClient.DisplayStatus.OFF;
-            leftPvPTiers.active = true;
-            buttonWidget.active = false;
-            rightPvPTiers.active = true;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX - 10, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Disable PvPTiers"))).build();
-
-        rightPvPTiers = ButtonWidget.builder(Text.of("→"), (buttonWidget) -> {
-            TiersClient.positionPvPTiers = TiersClient.DisplayStatus.RIGHT;
-            if (TiersClient.positionMCTiers == TiersClient.DisplayStatus.RIGHT) {
-                TiersClient.positionMCTiers = TiersClient.DisplayStatus.OFF;
-                centerMCTiers.active = false;
-                rightMCTiers.active = true;
-            }
-            if (TiersClient.positionSubtiers == TiersClient.DisplayStatus.RIGHT) {
-                TiersClient.positionSubtiers = TiersClient.DisplayStatus.OFF;
-                centerSubtiers.active = false;
-                rightSubtiers.active = true;
-            }
-            leftPvPTiers.active = true;
-            centerPvPTiers.active = true;
-            buttonWidget.active = false;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX - 10 + 24, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Display PvPTiers on the right"))).build();
-
-        leftSubtiers = ButtonWidget.builder(Text.of("←"), (buttonWidget) -> {
-            TiersClient.positionSubtiers = TiersClient.DisplayStatus.LEFT;
-            if (TiersClient.positionMCTiers == TiersClient.DisplayStatus.LEFT) {
-                TiersClient.positionMCTiers = TiersClient.DisplayStatus.OFF;
-                leftMCTiers.active = true;
-                centerMCTiers.active = false;
-            }
-            if (TiersClient.positionPvPTiers == TiersClient.DisplayStatus.LEFT) {
-                TiersClient.positionPvPTiers = TiersClient.DisplayStatus.OFF;
-                leftPvPTiers.active = true;
-                centerPvPTiers.active = false;
-            }
-            buttonWidget.active = false;
-            centerSubtiers.active = true;
-            rightSubtiers.active = true;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX + 120 - 10 - 24, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Display Subtiers on the left"))).build();
-
-        centerSubtiers = ButtonWidget.builder(Text.of("●"), (buttonWidget) -> {
-            TiersClient.positionSubtiers = TiersClient.DisplayStatus.OFF;
-            leftSubtiers.active = true;
-            buttonWidget.active = false;
-            rightSubtiers.active = true;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX + 120 - 10, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Disable Subtiers"))).build();
-
-        rightSubtiers = ButtonWidget.builder(Text.of("→"), (buttonWidget) -> {
-            TiersClient.positionSubtiers = TiersClient.DisplayStatus.RIGHT;
-            if (TiersClient.positionMCTiers == TiersClient.DisplayStatus.RIGHT) {
-                TiersClient.positionMCTiers = TiersClient.DisplayStatus.OFF;
-                centerMCTiers.active = false;
-                rightMCTiers.active = true;
-            }
-            if (TiersClient.positionPvPTiers == TiersClient.DisplayStatus.RIGHT) {
-                TiersClient.positionPvPTiers = TiersClient.DisplayStatus.OFF;
-                centerPvPTiers.active = false;
-                rightPvPTiers.active = true;
-            }
-            leftSubtiers.active = true;
-            centerSubtiers.active = true;
-            buttonWidget.active = false;
-            ConfigManager.saveConfig();
-            TiersClient.updateAllTags();
-        }).dimensions(centerX + 120 - 10 + 24, distance + 145, 20, 20).tooltip(Tooltip.of(Text.of("Display Subtiers on the right"))).build();
-
-        switch (TiersClient.positionMCTiers) {
-            case RIGHT -> rightMCTiers.active = false;
-            case OFF -> centerMCTiers.active = false;
-            case LEFT -> leftMCTiers.active = false;
-        }
-
-        switch (TiersClient.positionPvPTiers) {
-            case RIGHT -> rightPvPTiers.active = false;
-            case OFF -> centerPvPTiers.active = false;
-            case LEFT -> leftPvPTiers.active = false;
-        }
-
-        switch (TiersClient.positionSubtiers) {
-            case RIGHT -> rightSubtiers.active = false;
-            case OFF -> centerSubtiers.active = false;
-            case LEFT -> leftSubtiers.active = false;
-        }
-
-        activeRightMode = ButtonWidget.builder(Icons.CYCLE, (buttonWidget) -> {
-            TiersClient.cycleRightMode();
-            autoKitDetect.setMessage(Text.of(TiersClient.autoKitDetect ? "Disable auto kit detect" : "Enable auto kit detect"));
-            autoKitDetect.setTooltip(Tooltip.of(Text.of((TiersClient.autoKitDetect ?
-                    "Disable auto kit detect: you will need to press " + autoDetectKitBoundKey + " to auto-detect the current gamemode" :
-                    "Enable auto kit detect: Tiers will always scan your inventory to display the right gamemode (instead of pressing " + autoDetectKitBoundKey + ")"))));
-        }).dimensions(centerX + 90 + 4, distance + 75, 20, 20).tooltip(Tooltip.of(Text.of("Cycle active right gamemode (press " + cycleRightBoundKey + " in game)"))).build();
-
-        activeLeftMode = ButtonWidget.builder(Icons.CYCLE, (buttonWidget) -> {
-            TiersClient.cycleLeftMode();
-            autoKitDetect.setMessage(Text.of(TiersClient.autoKitDetect ? "Disable auto kit detect" : "Enable auto kit detect"));
-            autoKitDetect.setTooltip(Tooltip.of(Text.of((TiersClient.autoKitDetect ?
-                    "Disable auto kit detect: you will need to press " + autoDetectKitBoundKey + " to auto-detect the current gamemode" :
-                    "Enable auto kit detect: Tiers will always scan your inventory to display the right gamemode (instead of pressing " + autoDetectKitBoundKey + ")"))));
-        }).dimensions(centerX - 90 - 20 - 4, distance + 75, 20, 20).tooltip(Tooltip.of(Text.of("Cycle active left gamemode (press " + cycleLeftBoundKey + " in game)"))).build();
-
-        ButtonWidget useClassicIcons = ButtonWidget.builder(TiersClient.activeIcons == Icons.Type.CLASSIC ? Text.of("●") : Text.empty(), (buttonWidget) -> {
-            buttonWidget.setMessage(TiersClient.activeIcons == Icons.Type.CLASSIC ? Text.of("●") : Text.empty());
-            TiersClient.changeIcons(Icons.Type.CLASSIC, true);
-        }).dimensions(5, 5, 20, 20).tooltip(Tooltip.of(Text.of("Use classic styled icons and colors"))).build();
-
-        ButtonWidget usePvPTiersIcons = ButtonWidget.builder(TiersClient.activeIcons == Icons.Type.PVPTIERS ? Text.of("●") : Text.empty(), (buttonWidget) -> {
-            buttonWidget.setMessage(TiersClient.activeIcons == Icons.Type.PVPTIERS ? Text.of("●") : Text.empty());
-            TiersClient.changeIcons(Icons.Type.PVPTIERS, true);
-        }).dimensions(5, 30, 20, 20).tooltip(Tooltip.of(Text.of("Use PvPTiers styled icons and colors"))).build();
-
-        ButtonWidget useMCTiersIcons = ButtonWidget.builder(TiersClient.activeIcons == Icons.Type.MCTIERS ? Text.of("●") : Text.empty(), (buttonWidget) -> {
-            buttonWidget.setMessage(TiersClient.activeIcons == Icons.Type.MCTIERS ? Text.of("●") : Text.empty());
-            TiersClient.changeIcons(Icons.Type.MCTIERS, true);
-        }).dimensions(5, 55, 20, 20).tooltip(Tooltip.of(Text.of("Use MCTiers styled icons and colors"))).build();
-
-        switch (TiersClient.activeIcons) {
-            case CLASSIC -> useClassicIcons.active = false;
-            case PVPTIERS -> usePvPTiersIcons.active = false;
-            case MCTIERS -> useMCTiersIcons.active = false;
-        }
-
-        activeRightMode.visible = TiersClient.positionMCTiers == TiersClient.DisplayStatus.RIGHT || TiersClient.positionPvPTiers == TiersClient.DisplayStatus.RIGHT || TiersClient.positionSubtiers == TiersClient.DisplayStatus.RIGHT;
-        activeLeftMode.visible = TiersClient.positionMCTiers == TiersClient.DisplayStatus.LEFT || TiersClient.positionPvPTiers == TiersClient.DisplayStatus.LEFT || TiersClient.positionSubtiers == TiersClient.DisplayStatus.LEFT;
-
-        addDrawableChild(toggleMod);
+        addDrawableChild(toggleModWidget);
         addDrawableChild(toggleShowIcons);
         addDrawableChild(toggleSeparatorMode);
         addDrawableChild(cycleDisplayMode);
-        addDrawableChild(autoKitDetect);
+        addDrawableChild(mcTiersCOMPosition);
+        addDrawableChild(drakenseTiersPosition);
         addDrawableChild(clearPlayerCache);
-        addDrawableChild(leftMCTiers);
-        addDrawableChild(centerMCTiers);
-        addDrawableChild(rightMCTiers);
-        addDrawableChild(leftPvPTiers);
-        addDrawableChild(centerPvPTiers);
-        addDrawableChild(rightPvPTiers);
-        addDrawableChild(leftSubtiers);
-        addDrawableChild(centerSubtiers);
-        addDrawableChild(rightSubtiers);
-        addDrawableChild(activeRightMode);
-        addDrawableChild(activeLeftMode);
-        addDrawableChild(enableOwnProfile);
-        addDrawableChild(useClassicIcons);
-        addDrawableChild(usePvPTiersIcons);
-        addDrawableChild(useMCTiersIcons);
     }
 
-    private void drawPlayerAvatar(DrawContext context, int x, int y) {
-        if (imageReady) {
-            if (ownProfile.imageSaved == 1 || ownProfile.imageSaved == 2)
-                context.drawTexture(RenderPipelines.GUI_TEXTURED, playerAvatarTexture, x - height / 10 / 2, y, 0, 0, height / 10, (int) (height / 4.166), height / 10, (int) (height / 4.166));
-            else if (ownProfile.imageSaved < 6 && ownProfile.imageSaved > 2)
-                context.drawTexture(RenderPipelines.GUI_TEXTURED, playerAvatarTexture, x - height / 7 / 2, y, 0, 0, height / 7, (int) (height / 4.145), height / 7, (int) (height / 4.145));
-        } else if (ownProfile.imageSaved != 0) {
-            loadPlayerAvatar();
-        } else if (ownProfile.numberOfImageRequests == 6)
-            context.drawCenteredTextWithShadow(textRenderer, Text.of(ownProfile.name + "'s skin failed to load. Restart game to retry"), x, y + 50, ColorControl.getColorMinecraftStandard("red"));
+    @Override
+    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        this.renderBackground(context, mouseX, mouseY, delta);
+        super.render(context, mouseX, mouseY, delta);
+
+        context.drawCenteredTextWithShadow(
+                this.textRenderer,
+                Text.literal("DRKTiers config"),
+                width / 2,
+                10,
+                ColorControl.getColor("text")
+        );
+
+        drawCategoryList(context, MCTIERS_COM_IMAGE, firstListX, listY);
+        drawCategoryList(context, DRAKENSE_TIERS_IMAGE, secondListX, listY);
+
+        context.drawTextWithShadow(this.textRenderer,
+                Text.of("Enable DRKTiers"), centerX - 30, distance,
+                ColorControl.getColor("text"));
+        context.drawTextWithShadow(this.textRenderer,
+                Text.of("Enable Icons"), centerX - 19, distance + separator,
+                ColorControl.getColor("text"));
+        context.drawTextWithShadow(this.textRenderer,
+                Text.of("Dynamic Separator Color"), centerX - 48, distance + 2 * separator,
+                ColorControl.getColor("text"));
+        context.drawTextWithShadow(this.textRenderer,
+                Text.of("Displayed Tier"), centerX - 25, distance + 3 * separator,
+                ColorControl.getColor("text"));
+
+        context.drawTextWithShadow(this.textRenderer,
+                Text.of("Position"), firstListX - 7, listY + 2 * separator,
+                ColorControl.getColor("text"));
+        context.drawTextWithShadow(this.textRenderer,
+                Text.of("Position"), secondListX - 7, listY + 2 * separator,
+                ColorControl.getColor("text"));
+
+        checkUpdates();
     }
 
-    private void loadPlayerAvatar() {
-        if (imageReady)
-            return;
+    private void drawCategoryList(DrawContext context, Identifier image, int x, int y) {
+        if (image == MCTIERS_COM_IMAGE) {
+            context.drawTexture(image, x - 56, y + 5, 0, 0, 112, 21, 112, 21);
+        } else {
+            context.drawTexture(image, x - 13, y, 0, 0, 26, 26, 26, 26);
+        }
+    }
 
-        try (FileInputStream fileInputStream = new FileInputStream(FabricLoader.getInstance().getGameDir().resolve("cache/tiers/" + (useOwnProfile ? ownProfile.uuid : defaultProfile.uuid) + ".png").toFile())) {
-            MinecraftClient.getInstance().getTextureManager().registerTexture(playerAvatarTexture, new NativeImageBackedTexture(null, NativeImage.read(fileInputStream)));
-            imageReady = true;
-        } catch (IOException ignored) {
-            LOGGER.warn("Error loading player skin");
+    private void checkUpdates() {
+        toggleModWidget.setPosition(width / 2 - 51, distance - 4);
+        toggleShowIcons.setPosition(width / 2 - 40, distance + separator - 4);
+        toggleSeparatorMode.setPosition(width / 2 - 69, distance + 2 * separator - 4);
+        cycleDisplayMode.setPosition(width / 2 - 46, distance + 3 * separator - 4);
+
+        mcTiersCOMPosition.setPosition(firstListX - 28, listY + 2 * separator - 4);
+        drakenseTiersPosition.setPosition(secondListX - 28, listY + 2 * separator - 4);
+
+        if (updateButtons == 0) {
+            if (TiersClient.drakenseTiersPosition == TiersClient.mcTiersCOMPosition
+                    && TiersClient.mcTiersCOMPosition != TiersClient.DisplayStatus.OFF) {
+                TiersClient.drakenseTiersPosition = TiersClient.DisplayStatus.OFF;
+                drakenseTiersPosition.setMessage(
+                        Text.of(TiersClient.drakenseTiersPosition.getIcon())
+                );
+            }
+            updateButtons = -1;
+        } else if (updateButtons == 1) {
+            if (TiersClient.mcTiersCOMPosition == TiersClient.drakenseTiersPosition
+                    && TiersClient.drakenseTiersPosition != TiersClient.DisplayStatus.OFF) {
+                TiersClient.mcTiersCOMPosition = TiersClient.DisplayStatus.OFF;
+                mcTiersCOMPosition.setMessage(
+                        Text.of(TiersClient.mcTiersCOMPosition.getIcon())
+                );
+            }
+            updateButtons = -1;
         }
     }
 
